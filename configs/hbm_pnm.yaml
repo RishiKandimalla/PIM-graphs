@@ -1,0 +1,31 @@
+# Temporal-Piccolo / PIM-graphs — Ramulator 2 HBM memory stack
+# Frontend: GEM5 wrapper — external simulator injects requests via receive_external_requests()
+# DRAM: HBM2 (Ramulator preset). Address mapping: RoBaRaCoCh over channel, pseudochannel, bankgroup, bank, row, column.
+
+Frontend:
+  impl: GEM5
+  clock_ratio: 1
+
+MemorySystem:
+  impl: GenericDRAM
+  clock_ratio: 1
+
+  DRAM:
+    impl: HBM2
+    org:
+      preset: HBM2_8Gb
+    timing:
+      preset: HBM2_2Gbps
+
+  Controller:
+    impl: Generic
+    Scheduler:
+      impl: FRFCFS
+    RefreshManager:
+      impl: AllBank
+    RowPolicy:
+      impl: OpenRowPolicy
+    plugins:
+
+  AddrMapper:
+    impl: RoBaRaCoCh
