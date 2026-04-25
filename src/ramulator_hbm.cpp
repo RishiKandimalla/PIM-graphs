@@ -34,7 +34,7 @@ RamulatorHbmSimulator::RamulatorHbmSimulator(std::string config_path) : config_p
   YAML::Node config = Ramulator::Config::parse_config_file(config_path_, {});
   frontend_ = Ramulator::Factory::create_frontend(config);
   memory_system_ = Ramulator::Factory::create_memory_system(config);
-  frontend_->connect_memory_system(memory_system_);
+  frontend_->connect_memory_system(memory_system_); 
   memory_system_->connect_frontend(frontend_);
 }
 
