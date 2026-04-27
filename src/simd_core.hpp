@@ -1,7 +1,10 @@
 #pragma once
 
 #include "pseudo_channel.hpp"
-
+#include "array_feeder.hpp"
+#include "hierarchal_router.hpp"
+#include "ramulator_hbm.hpp"
+#include "systolic_array.hpp"
 #include <cstdint>
 #include <vector>
 #include <queue>
@@ -15,7 +18,8 @@ enum class SIMDOpcode{
   LOAD,      // Load from HBM to local register
   STORE,     // Store from local register to HBM
   ADD_VEC,   // Element-wise vector addition
-  MUL_VEC    // Element-wise vector multiplication
+  MUL_VEC,    // Element-wise vector multiplication
+  PUSH_ARR,   // Push a vector to the ArrayFeeder 
 };
 
 struct SIMDInstruction {
@@ -68,6 +72,17 @@ class SIMDCore {
         instruction_queue_.pop(); 
         break;
       }
+      case SIMDOpcode::PUSH_ARR {
+       std::vector<float> vec;
+        for (int i = 0; i < SystolicArray::kDimension; ++i) {
+          vec.push_back(registers_[inst.src1_reg + i]);
+        }
+        //feed the vector into the array feeder, which will handle the staggering for us
+        array_feeder_.push_vector(vec);
+
+        instruction_queue_.pop();
+        break;
+      }
       case SIMDOpcode::ADD_VEC: {
         registers_[inst.dest_reg] = registers_[inst.src1_reg] + registers_[inst.src2_reg];
         instruction_queue_.pop();
@@ -110,6 +125,9 @@ class SIMDCore {
         //Pipeline state
         bool is_stalled_ = false;  // Waiting for memory response
         int pending_dest_reg_ = -1; // Which reg we're waiting to write back to
+
+        HierarchicalRouter& router_; // Hierarchical router for enqueuing requests
+        ArrayFeeder& array_feeder_; // ArrayFeeder for pushing vectors to the systolic array
 
 };
 }
