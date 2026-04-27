@@ -34,8 +34,8 @@ struct SIMDInstruction {
 
 class SIMDCore {
     public:
-        SIMDCore(int pc_id, PseudoChannelMultiplexer& mux, std::uint32_t num_registers = 256)
-        : pc_id_(pc_id), mux_(mux) {
+        SIMDCore(int pc_id, PseudoChannelMultiplexer& mux, HierarchicalRouter& router, ArrayFeeder& feeder, std::uint32_t num_registers = 256)
+        : pc_id_(pc_id), mux_(mux), router_(router), array_feeder_(feeder) {
         // Initialize a dummy local SRAM / Reg File (storing floats for GNN features/weights)
         registers_.resize(num_registers, 0.0f);
     }    
@@ -72,7 +72,7 @@ class SIMDCore {
         instruction_queue_.pop(); 
         break;
       }
-      case SIMDOpcode::PUSH_ARR {
+      case SIMDOpcode::PUSH_ARR: {
        std::vector<float> vec;
         for (int i = 0; i < SystolicArray::kDimension; ++i) {
           vec.push_back(registers_[inst.src1_reg + i]);
