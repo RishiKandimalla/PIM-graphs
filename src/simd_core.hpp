@@ -2,9 +2,10 @@
 
 #include "pseudo_channel.hpp"
 #include "array_feeder.hpp"
-#include "hierarchal_router.hpp"
+#include "hierarchical_router.hpp"
 #include "ramulator_hbm.hpp"
 #include "systolic_array.hpp"
+#include "piccolo_controller.hpp"
 #include <cstdint>
 #include <vector>
 #include <queue>
@@ -20,6 +21,7 @@ enum class SIMDOpcode{
   ADD_VEC,   // Element-wise vector addition
   MUL_VEC,    // Element-wise vector multiplication
   PUSH_ARR,   // Push a vector to the ArrayFeeder 
+  GATHER,   // Piccolo FIM gather sequence
 };
 
 struct SIMDInstruction {
@@ -34,8 +36,8 @@ struct SIMDInstruction {
 
 class SIMDCore {
     public:
-        SIMDCore(int pc_id, PseudoChannelMultiplexer& mux, HierarchicalRouter& router, ArrayFeeder& feeder, std::uint32_t num_registers = 256)
-        : pc_id_(pc_id), mux_(mux), router_(router), array_feeder_(feeder) {
+        SIMDCore(int pc_id, PseudoChannelMultiplexer& mux, HierarchicalRouter& router, ArrayFeeder& feeder, PiccoloGatherController& piccolo, std::uint32_t num_registers = 256)
+        : pc_id_(pc_id), mux_(mux), router_(router), array_feeder_(feeder), piccolo_(piccolo) {
         // Initialize a dummy local SRAM / Reg File (storing floats for GNN features/weights)
         registers_.resize(num_registers, 0.0f);
     }    
@@ -101,13 +103,21 @@ class SIMDCore {
     }
   }
     //called by ramulator when a memory response arrives for this core's pending request 
-    void on_memory_reply(float simulated_data) {
+    void on_memory_reply(const std::vector<float>& burst_data) {
         if (!is_stalled_ || pending_dest_reg_ == -1) {
         return; // sanity check 
         }
 
+        // must not write beyond the end of our register file
+        size_t count = std::min<size_t>(16, burst_data.size());
+        if (pending_dest_reg_ + count > registers_.size()) {
+            count = registers_.size() - pending_dest_reg_; 
+        }
+
         // Write the data into the SRAM and unlock the core
-        registers_[pending_dest_reg_] = simulated_data;
+        if (count > 0) {
+            std::copy_n(burst_data.begin(), count, registers_.begin() + pending_dest_reg_);
+        }
         is_stalled_ = false;
         pending_dest_reg_ = -1;
     }
@@ -115,6 +125,9 @@ class SIMDCore {
     [[nodiscard]] bool is_done() const {
         return instruction_queue_.empty() && !is_stalled_;
     }
+
+    //helper function for vpu test 
+    [[nodiscard]] bool is_stalled() const { return is_stalled_; }
 
     private:
         int pc_id_;
@@ -128,6 +141,6 @@ class SIMDCore {
 
         HierarchicalRouter& router_; // Hierarchical router for enqueuing requests
         ArrayFeeder& array_feeder_; // ArrayFeeder for pushing vectors to the systolic array
-
+        PiccoloGatherController& piccolo_; // Controller for issuing gather requests
 };
 }
