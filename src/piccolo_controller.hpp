@@ -11,19 +11,22 @@ namespace pim {
 
 class OffsetBuffer {
  public:
+ //capacity
   explicit OffsetBuffer(std::size_t capacity_entries = 256) : cap_(capacity_entries) {
     data_.reserve(cap_);
   }
-
+  //check empty full and size functions
   [[nodiscard]] bool empty() const { return size_ == 0; }
   [[nodiscard]] bool full() const { return size_ >= cap_; }
   [[nodiscard]] std::size_t size() const { return size_; }
 
+  //clear offset buffer
   void clear() {
     head_ = 0;
     size_ = 0;
   }
 
+  //push into offset buffer if not full. 
   void push(std::uint32_t v) {
     if (full()) {
       return;
@@ -37,6 +40,7 @@ class OffsetBuffer {
 
   [[nodiscard]] std::uint32_t front() const { return empty() ? 0u : data_[head_]; }
 
+  //pop the head
   void pop() {
     if (empty()) {
       return;
@@ -54,12 +58,17 @@ class OffsetBuffer {
 
 /// Fixed-capacity FIFO of gathered values (Piccolo Data Buffer).
 /// No exceptions; pushes are ignored when full.
+//stores the gathered results
+//when a read returns, push value into data buffer
+//ignore pushes if full
+//buffer
 class DataBuffer {
  public:
   explicit DataBuffer(std::size_t capacity_elems = 256) : cap_(capacity_elems) {
     data_.reserve(cap_);
   }
 
+  //buffer status fucntions
   [[nodiscard]] bool empty() const { return size_ == 0; }
   [[nodiscard]] bool full() const { return size_ >= cap_; }
   [[nodiscard]] std::size_t size() const { return size_; }
@@ -99,7 +108,7 @@ class DataBuffer {
 
 /// Piccolo GATHER controller (OB preloaded by caller).
 ///
-/// This is intentionally a small model: it issues element-sized reads into the existing mux
+/// issues element-sized reads into the existing mux
 /// and relies on the simulator to call `on_read_complete()` when requests finish.
 class PiccoloGatherController {
  public:
@@ -121,6 +130,7 @@ class PiccoloGatherController {
       b.addr = base_addr_ + static_cast<std::uint64_t>(off) * elem_bytes_;
       b.size_bytes = elem_bytes_;
       b.pc_id = pc_id_;
+      b.on_complete = [this]() { on_read_complete(0); };
       mux_.port(pc_id_).enqueue(b);
       issued_++;
       outstanding_++;

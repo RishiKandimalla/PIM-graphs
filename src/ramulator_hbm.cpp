@@ -6,7 +6,6 @@
 #include "frontend/frontend.h"
 #include "memory_system/memory_system.h"
 
-#include <cmath>
 #include <limits>
 #include <utility>
 
@@ -56,13 +55,23 @@ SimulationResult RamulatorHbmSimulator::run(std::uint64_t max_memory_cycles) {
                                         ? tsv_peak_gbps_ * 1.0e9 * (out.tck_ns * 1.0e-9)
                                         : std::numeric_limits<double>::infinity();
 
-  const std::uint64_t target_bursts = mux_.total_pending_bursts();
   std::uint64_t completed = 0;
   std::uint64_t bytes_done = 0;
+  std::uint64_t outstanding_requests = 0;
+  std::uint64_t standard_sparse_inflight = 0;
 
   std::uint64_t cycles = 0;
 
-  while (cycles < max_memory_cycles && completed < target_bursts) {
+  auto has_work = [&]() {
+    const bool piccolo_active = piccolo_ != nullptr && !piccolo_->done();
+    return mux_.total_pending_bursts() > 0 || outstanding_requests > 0 || piccolo_active;
+  };
+
+  while (cycles < max_memory_cycles && has_work()) {
+    if (piccolo_ != nullptr && !piccolo_->done()) {
+      piccolo_->tick_issue();
+    }
+
     double tsv_used_this_tick = 0.0;
 
     int wave_count = 0;
@@ -82,23 +91,43 @@ SimulationResult RamulatorHbmSimulator::run(std::uint64_t max_memory_cycles) {
         MemoryBurst burst = port.front();
         const std::uint32_t sz = burst.size_bytes;
         const double sz_d = static_cast<double>(sz);
+        const bool is_standard_sparse_read = (sz >= 64 && !burst.on_complete);
+
+        if (serialize_standard_sparse_reads_ && is_standard_sparse_read &&
+            standard_sparse_inflight > 0) {
+          continue;
+        }
 
         if (tsv_peak_gbps_ > 0.0 && tsv_used_this_tick + sz_d > tsv_limit_per_tick + 1e-6) {
           continue;
         }
 
-        Ramulator::Request req(
-            burst.addr, Ramulator::Request::Type::Read, -1,
-            [&, sz](Ramulator::Request& /*r*/) {
-              completed++;
-              bytes_done += sz;
-            });
+        auto on_complete = burst.on_complete;
+        const bool track_as_standard_sparse = is_standard_sparse_read;
+        Ramulator::Request req(burst.addr, Ramulator::Request::Type::Read, -1,
+                               [&, sz, on_complete, track_as_standard_sparse](Ramulator::Request& /*r*/) {
+                                 completed++;
+                                 bytes_done += sz;
+                                 if (outstanding_requests > 0) {
+                                   outstanding_requests--;
+                                 }
+                                 if (track_as_standard_sparse && standard_sparse_inflight > 0) {
+                                   standard_sparse_inflight--;
+                                 }
+                                 if (on_complete) {
+                                   on_complete();
+                                 }
+                               });
 
         if (memory_system_->send(std::move(req))) {
           port.pop();
           mux_.advance_after_issue(pc);
           tsv_used_this_tick += sz_d;
           out.tsv_bytes_admitted += sz;
+          outstanding_requests++;
+          if (track_as_standard_sparse) {
+            standard_sparse_inflight++;
+          }
           wave_progress = true;
         }
       }

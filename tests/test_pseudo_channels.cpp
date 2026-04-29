@@ -1,10 +1,10 @@
 #include "bandwidth_oracle.hpp"
+#include "piccolo_controller.hpp"
 #include "pseudo_channel.hpp"
 #include "ramulator_hbm.hpp"
 
 #include <gtest/gtest.h>
 
-#include <cmath>
 #include <cstdlib>
 #include <string>
 
@@ -98,4 +98,75 @@ TEST(RamulatorHbm, UnlimitedTsvStillRuns) {
   EXPECT_EQ(r.bursts_completed, pim::kNumPseudoChannels * 2u);
   EXPECT_DOUBLE_EQ(r.tsv_peak_gbps, 0.0);
   EXPECT_EQ(r.tsv_bytes_admitted, r.bytes_moved);
+}
+
+TEST(PiccoloGather, EightElementGatherCompletes) {
+  pim::RamulatorHbmSimulator sim(config_path());
+  constexpr std::uint64_t kBaseAddr = 0;
+  constexpr std::uint32_t kElemBytes = 4;
+  constexpr std::uint32_t kElems = 8;
+  pim::PiccoloGatherController piccolo(/*pc_id=*/0, sim.mux(), kBaseAddr, kElemBytes, kElems);
+  piccolo.max_outstanding = 8;
+
+  // Non-contiguous offsets for a sparse-style gather.
+  const std::uint32_t offsets[kElems] = {0, 3, 11, 19, 27, 42, 64, 97};
+  for (std::uint32_t off : offsets) {
+    piccolo.ob.push(off);
+  }
+
+  sim.attach_piccolo(&piccolo);
+  pim::SimulationResult r = sim.run();
+  sim.finalize();
+
+  EXPECT_TRUE(piccolo.done());
+  EXPECT_EQ(piccolo.db.size(), static_cast<std::size_t>(kElems));
+  EXPECT_EQ(r.bursts_completed, kElems);
+  EXPECT_EQ(r.bytes_moved, static_cast<std::uint64_t>(kElems) * kElemBytes);
+  EXPECT_EQ(r.tsv_bytes_admitted, r.bytes_moved);
+  EXPECT_GT(r.memory_cycles, 0u);
+}
+
+TEST(PiccoloGather, BaselineVsPiccoloTime) {
+  constexpr std::uint64_t kBaseAddr = 0;
+  constexpr std::uint32_t kElemBytes = 4;
+  constexpr std::uint32_t kElems = 8;
+  const std::uint32_t offsets[kElems] = {0, 3, 11, 19, 27, 42, 64, 97};
+
+  // Baseline: fetch each sparse element as a full 64B cache line.
+  pim::RamulatorHbmSimulator baseline_sim(config_path());
+  baseline_sim.set_serialize_standard_sparse_reads(true);
+  for (std::uint32_t off : offsets) {
+    pim::MemoryBurst b;
+    b.addr = kBaseAddr + static_cast<std::uint64_t>(off) * kElemBytes;
+    b.size_bytes = 64;
+    b.pc_id = 0;
+    baseline_sim.mux().port(0).enqueue(b);
+  }
+  pim::SimulationResult baseline = baseline_sim.run();
+  baseline_sim.finalize();
+  const double baseline_time_ns =
+      static_cast<double>(baseline.memory_cycles) * baseline.tck_ns;
+
+  // Piccolo: element-sized gather reads driven by OffsetBuffer + DataBuffer.
+  pim::RamulatorHbmSimulator piccolo_sim(config_path());
+  pim::PiccoloGatherController piccolo(/*pc_id=*/0, piccolo_sim.mux(), kBaseAddr, kElemBytes, kElems);
+  piccolo.max_outstanding = 8;
+  for (std::uint32_t off : offsets) {
+    piccolo.ob.push(off);
+  }
+  piccolo_sim.attach_piccolo(&piccolo);
+  pim::SimulationResult piccolo_result = piccolo_sim.run();
+  piccolo_sim.finalize();
+  const double piccolo_time_ns =
+      static_cast<double>(piccolo_result.memory_cycles) * piccolo_result.tck_ns;
+
+  std::cout << "Baseline gather time (ns): " << baseline_time_ns << "\n";
+  std::cout << "Piccolo gather time (ns): " << piccolo_time_ns << "\n";
+
+  EXPECT_GT(baseline_time_ns, 0.0);
+  EXPECT_GT(piccolo_time_ns, 0.0);
+  EXPECT_EQ(baseline.bytes_moved, 64ull * kElems);
+  EXPECT_EQ(piccolo_result.bytes_moved, static_cast<std::uint64_t>(kElems) * kElemBytes);
+  EXPECT_LT(piccolo_result.bytes_moved, baseline.bytes_moved);
+  EXPECT_GT(baseline_time_ns, piccolo_time_ns);
 }

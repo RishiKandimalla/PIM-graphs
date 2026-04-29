@@ -1,9 +1,9 @@
 #pragma once
 
+#include "piccolo_controller.hpp"
 #include "pseudo_channel.hpp"
 
 #include <cstdint>
-#include <memory>
 #include <string>
 
 namespace Ramulator {
@@ -40,6 +40,12 @@ class RamulatorHbmSimulator {
   /// Cap bytes admitted per memory clock over the TSV (0 = unlimited). Default 512 GB/s per proposal.
   void set_tsv_peak_gbps(double gbps) { tsv_peak_gbps_ = gbps; }
   [[nodiscard]] double tsv_peak_gbps() const { return tsv_peak_gbps_; }
+  void attach_piccolo(PiccoloGatherController* piccolo) { piccolo_ = piccolo; }
+  /// Optional modeling knob for Week-3 comparisons:
+  /// serialize non-Piccolo 64B sparse reads to emulate cache-line gather latency.
+  void set_serialize_standard_sparse_reads(bool enabled) {
+    serialize_standard_sparse_reads_ = enabled;
+  }
 
   /// Run until all bursts are completed or `max_memory_cycles` reached.
   [[nodiscard]] SimulationResult run(std::uint64_t max_memory_cycles = 500000000ull);
@@ -49,10 +55,12 @@ class RamulatorHbmSimulator {
  private:
   std::string config_path_;
   PseudoChannelMultiplexer mux_;
+  PiccoloGatherController* piccolo_ = nullptr;
   Ramulator::IFrontEnd* frontend_ = nullptr;
   Ramulator::IMemorySystem* memory_system_ = nullptr;
   /// 0 = no TSV byte limit; otherwise max bytes per memory cycle ≈ gbps×1e9×tCK.
   double tsv_peak_gbps_ = 512.0;
+  bool serialize_standard_sparse_reads_ = false;
 };
 
 }  // namespace pim
