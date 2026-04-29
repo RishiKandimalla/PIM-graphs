@@ -49,6 +49,14 @@ set_target_properties(pim_tests PROPERTIES
 include(GoogleTest)
 gtest_discover_tests(pim_tests)
 
+add_executable(partitioner_tests tests/test_partitioner.cpp)
+target_link_libraries(partitioner_tests PRIVATE GTest::gtest_main)
+target_include_directories(partitioner_tests PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+include(GoogleTest)
+gtest_discover_tests(partitioner_tests)
+
 # Optional Python bindings
 option(BUILD_PYBIND "Build pybind11 module pim_bindings" OFF)
 if(BUILD_PYBIND)
