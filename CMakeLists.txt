@@ -34,7 +34,9 @@ FetchContent_MakeAvailable(googletest)
 
 enable_testing()
 
-add_executable(pim_tests tests/test_pseudo_channels.cpp)
+file(GLOB TEST_SOURCES tests/*.cpp)
+
+add_executable(pim_tests ${TEST_SOURCES})
 target_link_libraries(pim_tests PRIVATE pim_sim GTest::gtest_main)
 target_compile_definitions(pim_tests PRIVATE
   PIM_DEFAULT_CONFIG="${CMAKE_SOURCE_DIR}/configs/hbm_pnm.yaml"
