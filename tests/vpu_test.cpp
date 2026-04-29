@@ -30,8 +30,9 @@ TEST(VpuPipeline, GlobalVectorToSystolicArray) {
     HierarchicalRouter router(sim.mux(), 1.0e9); // 1GHz Clock
     ArrayFeeder feeder;
     
+    PiccoloGatherController piccolo(0, sim.mux(), 0x80000000ull, 4, 8);
     // Create VPU assigned to Pseudo-Channel 0 
-    SIMDCore vpu(0, sim.mux(), router, feeder); 
+    SIMDCore vpu(0, sim.mux(), router, feeder, piccolo); 
     SystolicArray array;
 
     // 2. Setup: Load Identity Matrix into Systolic Array 
