@@ -64,12 +64,19 @@ SimulationResult RamulatorHbmSimulator::run(std::uint64_t max_memory_cycles) {
 
   auto has_work = [&]() {
     const bool piccolo_active = piccolo_ != nullptr && !piccolo_->done();
-    return mux_.total_pending_bursts() > 0 || outstanding_requests > 0 || piccolo_active;
+    const bool vpu_active = vpu_ != nullptr && !vpu_->is_done();
+    return mux_.total_pending_bursts() > 0 || outstanding_requests > 0 || piccolo_active || vpu_active;
   };
 
   while (cycles < max_memory_cycles && has_work()) {
     if (piccolo_ != nullptr && !piccolo_->done()) {
       piccolo_->tick_issue();
+    }
+    if (vpu_ != nullptr && !vpu_->is_done()) {
+      vpu_->tick();
+    }
+    if (router_ != nullptr) {
+      router_->tick();
     }
 
     double tsv_used_this_tick = 0.0;

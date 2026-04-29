@@ -51,7 +51,28 @@ class SIMDCore {
   }
 
     void tick() {
-    // 1. If we are waiting for memory, freeze the pipeline.
+    //Piccolo Sync 
+    if (is_stalled_ && is_waiting_for_piccolo_) {
+        // If Piccolo has finished gathering all requested elements
+        if (piccolo_.done()) {
+            int i = 0;
+            // Drain the Data Buffer into the target registers
+            uint32_t batch_size = piccolo_.get_num_elems();
+            while (!piccolo_.db.empty() && i < batch_size && pending_dest_reg_ + i < registers_.size()) { 
+                // bit-casting uint32_t from Piccolo to float for SIMD regs
+                uint32_t raw_val = piccolo_.db.front();
+                piccolo_.db.pop();
+                registers_[pending_dest_reg_ + i] = *reinterpret_cast<float*>(&raw_val);
+                i++;
+            }
+            is_stalled_ = false;
+            is_waiting_for_piccolo_ = false;
+            pending_dest_reg_ = -1;
+        }
+        return; // Still waiting for Piccolo hardware to finish
+    }
+
+     //If we are waiting for memory, freeze the pipeline.
     if (is_stalled_ || instruction_queue_.empty()) {
       return; 
     }
@@ -59,13 +80,38 @@ class SIMDCore {
     const auto& inst = instruction_queue_.front();
 
     switch (inst.op) {
+      case SIMDOpcode::GATHER: {
+        piccolo_.set_base_addr(inst.mem_addr);
+        uint32_t elements_to_gather = inst.size_bytes / 4;
+        piccolo_.reset_for_new_batch(elements_to_gather); // Prepare controller for 8 elements
+        for (int i = 0; i < elements_to_gather; ++i) {
+            uint32_t offset = static_cast<uint32_t>(registers_[inst.src1_reg + i]);
+            piccolo_.ob.push(offset);
+        }
+        
+        pending_dest_reg_ = inst.dest_reg;
+        is_stalled_ = true;
+        is_waiting_for_piccolo_ = true;
+        
+        instruction_queue_.pop();
+        break;
+      }
       case SIMDOpcode::LOAD: {
         MemoryBurst burst;
         burst.addr = inst.mem_addr;
         burst.size_bytes = inst.size_bytes;
         burst.pc_id = pc_id_;
         
-        mux_.port(pc_id_).enqueue(burst);
+        burst.on_complete = [this]() {
+          // This executes when DRAM finishes the read
+
+          std::vector<float> mock_payload(16, 1.0f);
+
+          this->on_memory_reply(mock_payload);
+
+          }; 
+
+        router_.enqueue_request(burst);
         
         // Lock the core! Remember which register gets the data.
         pending_dest_reg_ = inst.dest_reg;
@@ -128,7 +174,17 @@ class SIMDCore {
 
     //helper function for vpu test 
     [[nodiscard]] bool is_stalled() const { return is_stalled_; }
+    
 
+    void write_register(std::uint32_t reg, float value) {
+        if (reg < registers_.size()) {
+            registers_[reg] = value;
+        }
+    }
+
+    float read_register(std::uint32_t reg) const {
+        return (reg < registers_.size()) ? registers_[reg] : 0.0f;
+    }
     private:
         int pc_id_;
         PseudoChannelMultiplexer& mux_;
@@ -142,5 +198,6 @@ class SIMDCore {
         HierarchicalRouter& router_; // Hierarchical router for enqueuing requests
         ArrayFeeder& array_feeder_; // ArrayFeeder for pushing vectors to the systolic array
         PiccoloGatherController& piccolo_; // Controller for issuing gather requests
+        bool is_waiting_for_piccolo_ = false; // Special stall state for waiting on Piccolo gather completion
 };
 }

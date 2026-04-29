@@ -12,7 +12,7 @@ namespace pim {
 class OffsetBuffer {
  public:
  //capacity
-  explicit OffsetBuffer(std::size_t capacity_entries = 256) : cap_(capacity_entries) {
+  explicit OffsetBuffer(std::size_t capacity_entries = 256) : cap_(capacity_entries), data_(capacity_entries, 0) {
     data_.reserve(cap_);
   }
   //check empty full and size functions
@@ -123,7 +123,7 @@ class PiccoloGatherController {
 
   /// Enqueue as many element reads as allowed this tick.
   void tick_issue() {
-    while (issued_ < num_elems_ && outstanding_ < max_outstanding && !ob.empty() && !db.full()) {
+    if (issued_ < num_elems_ && outstanding_ < max_outstanding && !ob.empty() && !db.full()) {
       const std::uint32_t off = ob.front();
       ob.pop();
       MemoryBurst b;
@@ -146,7 +146,18 @@ class PiccoloGatherController {
     outstanding_--;
     completed_++;
   }
+  /// Prepares the controller for a new set of elements.
+    void reset_for_new_batch(uint32_t new_num_elems) {
+      ob.clear();
+      db.clear();
+      num_elems_ = new_num_elems;
+      issued_ = 0;
+      completed_ = 0;
+      outstanding_ = 0;
+    }
 
+  void set_base_addr(std::uint64_t new_base_addr) { base_addr_ = new_base_addr; }
+  [[nodiscard]] std::uint32_t get_num_elems() const { return num_elems_; }
   [[nodiscard]] bool done() const { return completed_ >= num_elems_; }
 
  private:

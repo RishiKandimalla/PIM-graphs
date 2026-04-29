@@ -162,7 +162,8 @@ TEST(PiccoloGather, BaselineVsPiccoloTime) {
 
   std::cout << "Baseline gather time (ns): " << baseline_time_ns << "\n";
   std::cout << "Piccolo gather time (ns): " << piccolo_time_ns << "\n";
-
+    std::cout << "Baseline Effective GB/s: " << baseline.effective_gbps() << " GB/s\n";
+    std::cout << "Piccolo Effective GB/s: " << piccolo_result.effective_gbps() << " GB/s\n";
   EXPECT_GT(baseline_time_ns, 0.0);
   EXPECT_GT(piccolo_time_ns, 0.0);
   EXPECT_EQ(baseline.bytes_moved, 64ull * kElems);

@@ -28,18 +28,18 @@ class HierarchicalRouter {
   }
 
   void tick() {
-    double local_used = 0.0;
-    double global_used = 0.0;
+    local_used += local_bytes_per_tick_;
+    global_used += global_bytes_per_tick_;
 
     // Process Local Traffic
-    while (!local_queue_.empty() && local_used + local_queue_.front().size_bytes <= local_bytes_per_tick_) {
-      local_used += local_queue_.front().size_bytes;
+    while (!local_queue_.empty() && local_used >= local_queue_.front().size_bytes) {
+      local_used -= local_queue_.front().size_bytes;
       mux_.port(local_queue_.front().pc_id).enqueue(local_queue_.front());
       local_queue_.pop();
     }
 
     // Process Global Traffic (Bottleneck applied here)
-    while (!global_queue_.empty() && global_used + global_queue_.front().size_bytes <= global_bytes_per_tick_) {
+    while (!global_queue_.empty() && global_used >= global_queue_.front().size_bytes) {
       global_used += global_queue_.front().size_bytes;
       mux_.port(global_queue_.front().pc_id).enqueue(global_queue_.front());
       global_queue_.pop();
@@ -51,6 +51,8 @@ class HierarchicalRouter {
   double clock_hz_;
   double local_bytes_per_tick_;
   double global_bytes_per_tick_;
+  double local_used = 0.0;
+  double global_used = 0.0;
   
   std::queue<MemoryBurst> local_queue_;
   std::queue<MemoryBurst> global_queue_;

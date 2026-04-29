@@ -2,6 +2,8 @@
 
 #include "piccolo_controller.hpp"
 #include "pseudo_channel.hpp"
+#include "simd_core.hpp"
+#include "hierarchical_router.hpp"
 
 #include <cstdint>
 #include <string>
@@ -41,6 +43,8 @@ class RamulatorHbmSimulator {
   void set_tsv_peak_gbps(double gbps) { tsv_peak_gbps_ = gbps; }
   [[nodiscard]] double tsv_peak_gbps() const { return tsv_peak_gbps_; }
   void attach_piccolo(PiccoloGatherController* piccolo) { piccolo_ = piccolo; }
+  void attach_vpu(class SIMDCore* vpu) { vpu_ = vpu; }
+  void attach_router(class HierarchicalRouter* router) { router_ = router; }
   /// Optional modeling knob for Week-3 comparisons:
   /// serialize non-Piccolo 64B sparse reads to emulate cache-line gather latency.
   void set_serialize_standard_sparse_reads(bool enabled) {
@@ -54,6 +58,8 @@ class RamulatorHbmSimulator {
 
  private:
   std::string config_path_;
+  class SIMDCore* vpu_ = nullptr;
+  class HierarchicalRouter* router_ = nullptr;
   PseudoChannelMultiplexer mux_;
   PiccoloGatherController* piccolo_ = nullptr;
   Ramulator::IFrontEnd* frontend_ = nullptr;
