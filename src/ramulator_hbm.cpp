@@ -63,20 +63,68 @@ SimulationResult RamulatorHbmSimulator::run(std::uint64_t max_memory_cycles) {
   std::uint64_t cycles = 0;
 
   auto has_work = [&]() {
-    const bool piccolo_active = piccolo_ != nullptr && !piccolo_->done();
-    const bool vpu_active = vpu_ != nullptr && !vpu_->is_done();
-    return mux_.total_pending_bursts() > 0 || outstanding_requests > 0 || piccolo_active || vpu_active;
-  };
+    //Check if ANY VPU is still executing instructions
+    bool any_vpu_active = false;
+    for (int i = 0; i < 16; ++i) {
+        if (vpus_[i] != nullptr && !vpus_[i]->is_done()) {
+            any_vpu_active = true;
+            break; 
+        }
+    }
+
+    //Check if the Piccolo controller is still gathering
+    const bool piccolo_active = (piccolo_ != nullptr && !piccolo_->done());
+
+    //Check the memory system
+    const bool memory_active = (mux_.total_pending_bursts() > 0 || outstanding_requests > 0);
+
+    return any_vpu_active || piccolo_active || memory_active;
+};
 
   while (cycles < max_memory_cycles && has_work()) {
     if (piccolo_ != nullptr && !piccolo_->done()) {
       piccolo_->tick_issue();
     }
-    if (vpu_ != nullptr && !vpu_->is_done()) {
-      vpu_->tick();
-    }
     if (router_ != nullptr) {
       router_->tick();
+    }
+    std::array<PartialSumAccumulationUnit::VectorType, 16> tree_inputs;
+    bool has_valid_tree_inputs = false;
+
+    for (int i = 0; i < 16; ++i) {
+      if (vpus_[i] != nullptr) {
+        //Tick the VPU instruction stream
+        vpus_[i]->tick(); 
+
+        //Tick the Feeder and Systolic Array for this vault 
+        if (feeders_[i] != nullptr && systolic_arrays_[i] != nullptr) {
+          auto staggered_acts = feeders_[i]->get_next_activations();
+          std::array<float, 16> zero_psums = {0.0f}; // Base aggregation phase
+          
+          // Capture partial vectors dropping out of the bottom row 
+          tree_inputs[i] = systolic_arrays_[i]->tick(staggered_acts, zero_psums);
+
+          // Check if this vault is contributing real data to the reduction tree
+          for(float val : tree_inputs[i]) {
+            if (std::abs(val) > 1e-6f) { has_valid_tree_inputs = true; break; }
+          }
+        }
+      }
+    }
+
+    if (psau_ != nullptr) {
+      PartialSumAccumulationUnit::VectorType final_reduced_vector;
+      // Pipeline reduction takes 4 cycles 
+      bool tree_output_valid = psau_->tick(tree_inputs, has_valid_tree_inputs, final_reduced_vector);
+
+      // If a fully reduced vector emerges, write it back to HBM 
+      if (tree_output_valid && router_ != nullptr) {
+          MemoryBurst writeback;
+          writeback.addr = 0x80000000ull; // Target global address for vertex update
+          writeback.size_bytes = 64;      // 16 floats = 64B burst 
+          writeback.pc_id = 0;            // Logic-layer directed write
+          router_->enqueue_request(writeback);
+      }
     }
 
     double tsv_used_this_tick = 0.0;

@@ -4,7 +4,7 @@
 #include "pseudo_channel.hpp"
 #include "simd_core.hpp"
 #include "hierarchical_router.hpp"
-
+#include "psau.hpp"
 #include <cstdint>
 #include <string>
 
@@ -43,7 +43,10 @@ class RamulatorHbmSimulator {
   void set_tsv_peak_gbps(double gbps) { tsv_peak_gbps_ = gbps; }
   [[nodiscard]] double tsv_peak_gbps() const { return tsv_peak_gbps_; }
   void attach_piccolo(PiccoloGatherController* piccolo) { piccolo_ = piccolo; }
-  void attach_vpu(class SIMDCore* vpu) { vpu_ = vpu; }
+  void attach_vpu(int index, class SIMDCore* vpu) { vpus_[index] = vpu; }
+  void attach_feeder(int index, class ArrayFeeder* feeder) { feeders_[index] = feeder; }
+  void attach_systolic_array(int index, class SystolicArray* arr) { systolic_arrays_[index] = arr; }  
+  void attach_psau(PartialSumAccumulationUnit* psau) { psau_ = psau; }
   void attach_router(class HierarchicalRouter* router) { router_ = router; }
   /// Optional modeling knob for Week-3 comparisons:
   /// serialize non-Piccolo 64B sparse reads to emulate cache-line gather latency.
@@ -58,7 +61,11 @@ class RamulatorHbmSimulator {
 
  private:
   std::string config_path_;
-  class SIMDCore* vpu_ = nullptr;
+  std::array<class SIMDCore*, 16> vpus_ = {nullptr};
+  std::array<class ArrayFeeder*, 16> feeders_ = {nullptr};
+  std::array<class SystolicArray*, 16> systolic_arrays_ = {nullptr};
+  PartialSumAccumulationUnit* psau_ = nullptr;
+
   class HierarchicalRouter* router_ = nullptr;
   PseudoChannelMultiplexer mux_;
   PiccoloGatherController* piccolo_ = nullptr;

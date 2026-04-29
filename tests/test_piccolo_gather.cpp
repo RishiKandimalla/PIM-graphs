@@ -36,7 +36,7 @@ TEST(PiccoloFIM, GatherVersusBaselineLatency) {
     SIMDCore baseline_vpu(0, baseline_sim.mux(), baseline_router, baseline_feeder, dummy_piccolo);
 
     baseline_sim.attach_router(&baseline_router);
-    baseline_sim.attach_vpu(&baseline_vpu);
+    baseline_sim.attach_vpu(0, &baseline_vpu);
 
     std::vector<SIMDInstruction> baseline_program;
     for (int i = 0; i < 8; ++i) {
@@ -60,7 +60,7 @@ TEST(PiccoloFIM, GatherVersusBaselineLatency) {
     SIMDCore piccolo_vpu(0, piccolo_sim.mux(), piccolo_router, piccolo_feeder, piccolo);
 
     piccolo_sim.attach_router(&piccolo_router);
-    piccolo_sim.attach_vpu(&piccolo_vpu);
+    piccolo_sim.attach_vpu(0, &piccolo_vpu);
     piccolo_sim.attach_piccolo(&piccolo); 
 
     std::vector<float> mock_offsets = {0.0f, 4.0f, 8.0f, 12.0f, 16.0f, 20.0f, 24.0f, 28.0f};

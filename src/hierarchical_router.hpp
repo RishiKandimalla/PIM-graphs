@@ -40,7 +40,7 @@ class HierarchicalRouter {
 
     // Process Global Traffic (Bottleneck applied here)
     while (!global_queue_.empty() && global_used >= global_queue_.front().size_bytes) {
-      global_used += global_queue_.front().size_bytes;
+      global_used -= global_queue_.front().size_bytes;
       mux_.port(global_queue_.front().pc_id).enqueue(global_queue_.front());
       global_queue_.pop();
     }
