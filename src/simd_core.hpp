@@ -204,9 +204,9 @@ class SIMDCore {
       }
       // r[dest+d] = r[src1+d] * r[src2+d]  for d in [0,16)
       case SIMDOpcode::HADAMARD: {
-        for (int d = 0; d < 16 && inst.src1_reg + d < registers_.size() && inst.src2_reg + d < registers_.size() &&inst.dest_reg + d < registers_.size(); ++i) {
-          registers_[inst.dest_reg + d] =
-              registers_[inst.src1_reg + d] * registers_[inst.src2_reg + d];
+        for (int i = 0; i < 16 && inst.src1_reg + i < registers_.size() && inst.src2_reg + i < registers_.size() &&inst.dest_reg + i < registers_.size(); ++i) {
+          registers_[inst.dest_reg + i] =
+              registers_[inst.src1_reg + i] * registers_[inst.src2_reg + i];
         }
         instruction_queue_.pop();
         break;
