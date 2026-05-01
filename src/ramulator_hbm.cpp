@@ -88,7 +88,7 @@ SimulationResult RamulatorHbmSimulator::run(std::uint64_t max_memory_cycles) {
     if (router_ != nullptr) {
       router_->tick();
     }
-    std::array<PartialSumAccumulationUnit::VectorType, 16> tree_inputs;
+    std::array<PartialSumAccumulationUnit::VectorType, 16> tree_inputs{};
     bool has_valid_tree_inputs = false;
 
     for (int i = 0; i < 16; ++i) {

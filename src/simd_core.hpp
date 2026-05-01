@@ -6,6 +6,8 @@
 #include "ramulator_hbm.hpp"
 #include "systolic_array.hpp"
 #include "piccolo_controller.hpp"
+#include <gru.hpp>
+
 #include <cstdint>
 #include <vector>
 #include <queue>
