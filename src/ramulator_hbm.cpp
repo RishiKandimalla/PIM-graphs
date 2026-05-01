@@ -62,7 +62,8 @@ SimulationResult RamulatorHbmSimulator::run(std::uint64_t max_memory_cycles) {
 
   std::uint64_t cycles = 0;
 
-  auto has_work = [&]() {
+  bool load_h_issued = false;
+  auto has_work = [&]() -> bool{
     //Check if ANY VPU is still executing instructions
     bool any_vpu_active = false;
     for (int i = 0; i < 16; ++i) {
@@ -70,15 +71,19 @@ SimulationResult RamulatorHbmSimulator::run(std::uint64_t max_memory_cycles) {
             any_vpu_active = true;
             break; 
         }
+
+      //Check if the Piccolo controller is still gathering
+      if(piccolo_ != nullptr && !piccolo_->done()) return true;
+
+      //Check if vertex program is still running
+      if(vertex_program_ != nullptr && !vertex_program_->is_done()) return true;
+
+      //Check the memory system
+      if (mux_.total_pending_bursts() > 0 || outstanding_requests > 0) return true;
+      
+      return false;
     }
-
-    //Check if the Piccolo controller is still gathering
-    const bool piccolo_active = (piccolo_ != nullptr && !piccolo_->done());
-
-    //Check the memory system
-    const bool memory_active = (mux_.total_pending_bursts() > 0 || outstanding_requests > 0);
-
-    return any_vpu_active || piccolo_active || memory_active;
+    
 };
 
   while (cycles < max_memory_cycles && has_work()) {
@@ -88,6 +93,7 @@ SimulationResult RamulatorHbmSimulator::run(std::uint64_t max_memory_cycles) {
     if (router_ != nullptr) {
       router_->tick();
     }
+
     std::array<PartialSumAccumulationUnit::VectorType, 16> tree_inputs{};
     bool has_valid_tree_inputs = false;
 
@@ -125,6 +131,62 @@ SimulationResult RamulatorHbmSimulator::run(std::uint64_t max_memory_cycles) {
           writeback.pc_id = 0;            // Logic-layer directed write
           router_->enqueue_request(writeback);
       }
+    }
+
+    // Build the SA output array for the vertex program's GenUpdate phase
+      std::array<PartialSumAccumulationUnit::VectorType, 16> sa_outs = tree_inputs;
+      bool vp_done = vertex_program_->tick(sa_outs, has_valid_tree_inputs);
+
+      // When the vertex program moves into APPLY_UPDATE_LOAD_H, issue a
+      // read burst for the previous hidden state.  We only issue once per
+      // vertex (load_h_issued flag).
+      // "h_v(t-1) is stored in a logic-layer SRAM cache;
+      // on a cache miss a full 64B burst is fetched from the HBM stack. - TGN
+    if(vertex_program_->get_phase() == VertexProgramPhase::APPLY_UPDATE_LOAD_H && !load_h_issued && router_ != nullptr){
+      load_h_issued = true;
+
+      // Build the callback that delivers h_v(t-1) to the vertex program.
+        // We use a small lambda that captures the (weak) pointer; the
+        // actual payload is mock data here but would come from the burst
+        // reply in a full implementation.
+      auto vp_cb = vertex_program_->make_load_h_callback();
+
+      MemoryBurst load_h_burst;
+      load_h_burst.addr = vertex_program_->hidden_state_addr(); // hidden state address
+      load_h_burst.size_bytes = 64; // 16 floats = 64B burst
+      load_h_burst.pc_id = 0; // Logic-layer directed read
+
+      // A real implementation would decode the actual burst bytes here
+      // and pass them as floats to the callback.
+      load_h_burst.on_complete = [vp_cb]() {std::array<float, 16> mock_h{}; vp_cb(mock_h);}; // Deliver h_v(t-1) to vertex program when ready
+      router_->enqueue_request(load_h_burst);
+
+      // When the vertex program reaches WRITEBACK, issue a 64B write burst
+      // containing h_v(t) to cfg_.output_addr.
+      
+      if(vertex_program_->writeback_ready() && router_ != nullptr){
+        MemoryBurst writeback;
+        writeback.addr = vertex_program_->output_addr();
+        writeback.size_bytes = 64; // 16 floats = 64B burst
+        writeback.pc_id = 0; // Logic-layer directed write
+
+
+        // In a real design the burst payload would carry the 16 floats from
+        // vertex_program_->get_result().  Ramulator's send() models timing
+        // only; we track bytes_done for bandwidth accounting.
+        router_->enqueue_request(writeback);
+
+
+        //reset for next vertex
+        load_h_issued = false;
+        out.vertices_processed++;
+      }
+
+      if(vp_done){
+        out.vertex_program_stats = vertex_program_->get_stats();
+      }
+
+
     }
 
     double tsv_used_this_tick = 0.0;

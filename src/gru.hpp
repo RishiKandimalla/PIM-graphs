@@ -283,11 +283,11 @@ class GRUCell {
     return false;
   }
 
-  // --- Accessors ---
-  [[nodiscard]] bool        is_done()      const { return done_; }
-  [[nodiscard]] const Vec16& get_h_new()   const { return h_new_; }
-  [[nodiscard]] GRUPhase    get_phase()    const { return phase_; }
-  [[nodiscard]] int          drain_count() const { return drain_count_; }
+
+  [[nodiscard]] bool is_done() const { return done_; }
+  [[nodiscard]] const Vec16& get_h_new() const { return h_new_; }
+  [[nodiscard]] GRUPhase get_phase()const { return phase_; }
+  [[nodiscard]] int drain_count() const { return drain_count_; }
 
  private:
   // Weight matrices (16×16, row-major)

@@ -217,12 +217,13 @@ class TGNVertexProgram {
     return phase_ == VertexProgramPhase::DONE;
   }
 
-  [[nodiscard]] VertexProgramPhase  get_phase()             const { return phase_; }
-  [[nodiscard]] bool                is_done()               const { return phase_ == VertexProgramPhase::DONE; }
-  [[nodiscard]] bool                writeback_ready()       const { return writeback_ready_; }
-  [[nodiscard]] std::uint64_t       output_addr()           const { return cfg_.output_addr; }
-  [[nodiscard]] const Vec16&        get_result()            const { return new_hidden_state_; }
-  [[nodiscard]] const Vec16&        get_aggregated_message()const { return aggregated_message_; }
+  [[nodiscard]] VertexProgramPhase  get_phase() const { return phase_; }
+  [[nodiscard]] bool is_done() const { return phase_ == VertexProgramPhase::DONE; }
+  [[nodiscard]] bool writeback_ready() const { return writeback_ready_; }
+  [[nodiscard]] std::uint64_t hidden_state_addr() const { return cfg_.hidden_state_addr; }
+  [[nodiscard]] std::uint64_t output_addr() const { return cfg_.output_addr; }
+  [[nodiscard]] const Vec16& get_result() const { return new_hidden_state_; }
+  [[nodiscard]] const Vec16& get_aggregated_message() const { return aggregated_message_; }
 
   [[nodiscard]] VertexProgramStats  get_stats() const {
     return {gather_cycles_, compute_cycles_, psau_cycles_,

@@ -5,8 +5,11 @@
 #include "simd_core.hpp"
 #include "hierarchical_router.hpp"
 #include "psau.hpp"
+#include "tgn_twophase.hpp"
+
 #include <cstdint>
 #include <string>
+#include <array>
 
 namespace Ramulator {
 class IFrontEnd;
@@ -26,6 +29,9 @@ struct SimulationResult {
   double tsv_peak_gbps = 0.0;
   /// Effective GB/s (decimal) using bytes_moved / (memory_cycles * tck_ns * 1e-9).
   [[nodiscard]] double effective_gbps() const;
+
+  std::uint32_t vertices_processed = 0;
+  VertexProgramStats vertex_program_stats{};
 };
 
 /// Drives Ramulator 2 (GEM5 frontend + GenericDRAM) with a 16-way PC multiplexer.
@@ -48,6 +54,8 @@ class RamulatorHbmSimulator {
   void attach_systolic_array(int index, class SystolicArray* arr) { systolic_arrays_[index] = arr; }  
   void attach_psau(PartialSumAccumulationUnit* psau) { psau_ = psau; }
   void attach_router(class HierarchicalRouter* router) { router_ = router; }
+  void attach_vertex_program(TGNVertexProgram* vp) { vertex_program_ = vp; }
+
   /// Optional modeling knob for Week-3 comparisons:
   /// serialize non-Piccolo 64B sparse reads to emulate cache-line gather latency.
   void set_serialize_standard_sparse_reads(bool enabled) {
@@ -69,6 +77,9 @@ class RamulatorHbmSimulator {
   class HierarchicalRouter* router_ = nullptr;
   PseudoChannelMultiplexer mux_;
   PiccoloGatherController* piccolo_ = nullptr;
+
+  TGNVertexProgram* vertex_program_ = nullptr;
+
   Ramulator::IFrontEnd* frontend_ = nullptr;
   Ramulator::IMemorySystem* memory_system_ = nullptr;
   /// 0 = no TSV byte limit; otherwise max bytes per memory cycle ≈ gbps×1e9×tCK.
