@@ -69,15 +69,19 @@ enum class GRUPhase {
   IDLE,
   // Gate 1: reset
   LOAD_RESET_GATE,    // Load W_r into SA; push h_prev into feeder
+  SETTLE_RESET_GATE,  // Wait for the first GEMM to complete
   DRAIN_RESET_GATE,   // Count kGEMMLatency cycles; read SA bottom row
   // Gate 2: update
   LOAD_UPDATE_GATE,   // Load W_z into SA; push h_prev into feeder
+  SETTLE_UPDATE_GATE, // Wait for the update GEMM to complete
   DRAIN_UPDATE_GATE,
   // Gate 3a: W_hn · h  (to be reset-gated)
   LOAD_NEW_GATE_H,    // Load W_hn into SA; push h_prev into feeder
+  SETTLE_NEW_GATE_H,  // Wait for the new GEMM to complete
   DRAIN_NEW_GATE_H,
   // Gate 3b: W_in · x  (add to reset-gated term)
   LOAD_NEW_GATE_X,    // Load W_in into SA; push msg into feeder
+  SETTLE_NEW_GATE_X,  // Wait for the new GEMM to complete
   DRAIN_NEW_GATE_X,
   // Final: element-wise epilogue in SIMD
   APPLY_ELEMENTWISE,
@@ -162,10 +166,12 @@ class GRUCell {
       case GRUPhase::LOAD_RESET_GATE:
         sa.load_weights(W_r_);
         feeder.push_vector(std::vector<float>(h_prev_.begin(), h_prev_.end()));
+        phase_ = GRUPhase::SETTLE_RESET_GATE;
+        break;
+      case GRUPhase::SETTLE_RESET_GATE: 
         drain_count_ = 0;
         phase_ = GRUPhase::DRAIN_RESET_GATE;
         break;
-
       case GRUPhase::DRAIN_RESET_GATE: {
         auto acts = feeder.get_next_activations();
         Vec16 zero_psums{}; zero_psums.fill(0.0f);
@@ -186,10 +192,12 @@ class GRUCell {
       case GRUPhase::LOAD_UPDATE_GATE:
         sa.load_weights(W_z_);
         feeder.push_vector(std::vector<float>(h_prev_.begin(), h_prev_.end()));
+        phase_ = GRUPhase::SETTLE_UPDATE_GATE;
+        break;
+      case GRUPhase::SETTLE_UPDATE_GATE: 
         drain_count_ = 0;
         phase_ = GRUPhase::DRAIN_UPDATE_GATE;
         break;
-
       case GRUPhase::DRAIN_UPDATE_GATE: {
         auto acts = feeder.get_next_activations();
         Vec16 zero_psums{}; zero_psums.fill(0.0f);
@@ -211,6 +219,9 @@ class GRUCell {
       case GRUPhase::LOAD_NEW_GATE_H:
         sa.load_weights(W_hn_);
         feeder.push_vector(std::vector<float>(h_prev_.begin(), h_prev_.end()));
+        phase_ = GRUPhase::SETTLE_NEW_GATE_H;
+        break;
+      case GRUPhase::SETTLE_NEW_GATE_H: 
         drain_count_ = 0;
         phase_ = GRUPhase::DRAIN_NEW_GATE_H;
         break;
@@ -238,10 +249,12 @@ class GRUCell {
       case GRUPhase::LOAD_NEW_GATE_X:
         sa.load_weights(W_in_);
         feeder.push_vector(std::vector<float>(msg_.begin(), msg_.end()));
+        phase_ = GRUPhase::SETTLE_NEW_GATE_X;
+        break;
+      case GRUPhase::SETTLE_NEW_GATE_X: 
         drain_count_ = 0;
         phase_ = GRUPhase::DRAIN_NEW_GATE_X;
         break;
-
       case GRUPhase::DRAIN_NEW_GATE_X: {
         auto acts = feeder.get_next_activations();
         Vec16 zero_psums{}; zero_psums.fill(0.0f);
