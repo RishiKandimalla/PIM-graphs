@@ -65,13 +65,9 @@ SimulationResult RamulatorHbmSimulator::run(std::uint64_t max_memory_cycles) {
   bool load_h_issued = false;
   auto has_work = [&]() -> bool{
     //Check if ANY VPU is still executing instructions
-    bool any_vpu_active = false;
     for (int i = 0; i < 16; ++i) {
-        if (vpus_[i] != nullptr && !vpus_[i]->is_done()) {
-            any_vpu_active = true;
-            break; 
-        }
-
+        if (vpus_[i] != nullptr && !vpus_[i]->is_done()) return true;
+    }
       //Check if the Piccolo controller is still gathering
       if(piccolo_ != nullptr && !piccolo_->done()) return true;
 
@@ -82,9 +78,8 @@ SimulationResult RamulatorHbmSimulator::run(std::uint64_t max_memory_cycles) {
       if (mux_.total_pending_bursts() > 0 || outstanding_requests > 0) return true;
       
       return false;
-    }
-    
-};
+    };
+  
 
   while (cycles < max_memory_cycles && has_work()) {
     if (piccolo_ != nullptr && !piccolo_->done()) {
@@ -124,7 +119,7 @@ SimulationResult RamulatorHbmSimulator::run(std::uint64_t max_memory_cycles) {
       bool tree_output_valid = psau_->tick(tree_inputs, has_valid_tree_inputs, final_reduced_vector);
 
       // If a fully reduced vector emerges, write it back to HBM 
-      if (tree_output_valid && router_ != nullptr) {
+      if (tree_output_valid && router_ != nullptr && vertex_program_ == nullptr) {
           MemoryBurst writeback;
           writeback.addr = 0x80000000ull; // Target global address for vertex update
           writeback.size_bytes = 64;      // 16 floats = 64B burst 
@@ -134,9 +129,10 @@ SimulationResult RamulatorHbmSimulator::run(std::uint64_t max_memory_cycles) {
     }
 
     // Build the SA output array for the vertex program's GenUpdate phase
+    if(vertex_program_ != nullptr){
       std::array<PartialSumAccumulationUnit::VectorType, 16> sa_outs = tree_inputs;
       bool vp_done = vertex_program_->tick(sa_outs, has_valid_tree_inputs);
-
+    
       // When the vertex program moves into APPLY_UPDATE_LOAD_H, issue a
       // read burst for the previous hidden state.  We only issue once per
       // vertex (load_h_issued flag).
@@ -163,7 +159,7 @@ SimulationResult RamulatorHbmSimulator::run(std::uint64_t max_memory_cycles) {
 
       // When the vertex program reaches WRITEBACK, issue a 64B write burst
       // containing h_v(t) to cfg_.output_addr.
-      
+    }
       if(vertex_program_->writeback_ready() && router_ != nullptr){
         MemoryBurst writeback;
         writeback.addr = vertex_program_->output_addr();
@@ -185,10 +181,7 @@ SimulationResult RamulatorHbmSimulator::run(std::uint64_t max_memory_cycles) {
       if(vp_done){
         out.vertex_program_stats = vertex_program_->get_stats();
       }
-
-
     }
-
     double tsv_used_this_tick = 0.0;
 
     int wave_count = 0;

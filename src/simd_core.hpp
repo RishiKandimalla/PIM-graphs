@@ -98,7 +98,7 @@ class SIMDCore {
         }
         return; // Still waiting for Piccolo hardware to finish
       }
-       if(is_stalled && is_waiting_for_gru_){
+       if(is_stalled_ && is_waiting_for_gru_){
        if(gru_sa_ != nullptr && gru_feeder_ != nullptr){
           bool gru_done = gru_cell_->tick(*gru_sa_, *gru_feeder_);
           if (gru_done){
